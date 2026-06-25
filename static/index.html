@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAG 智能问答</title>
+    <style>
+        /* ===== 全局重置 ===== */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f0f7ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* ===== 背景装饰 ===== */
+        .bg-decoration {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.35;
+        }
+
+        .blob-1 {
+            width: 400px;
+            height: 400px;
+            top: -120px;
+            right: -80px;
+            background: radial-gradient(circle, rgba(91, 141, 239, 0.15), rgba(91, 141, 239, 0.02));
+            animation: floatBlob 20s ease-in-out infinite alternate;
+        }
+
+        .blob-2 {
+            width: 350px;
+            height: 350px;
+            bottom: -100px;
+            left: -60px;
+            background: radial-gradient(circle, rgba(139, 111, 232, 0.12), rgba(139, 111, 232, 0.02));
+            animation: floatBlob 18s ease-in-out infinite alternate-reverse;
+        }
+
+        @keyframes floatBlob {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                transform: translate(30px, -20px) scale(1.1);
+            }
+        }
+
+        /* ===== 主容器 ===== */
+        .container {
+            position: relative;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 28px;
+            box-shadow: 0 20px 60px rgba(58, 95, 175, 0.06), 0 8px 24px rgba(58, 95, 175, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            max-width: 740px;
+            width: 100%;
+            padding: 40px 38px;
+            transition: box-shadow 0.3s ease;
+            animation: cardEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes cardEnter {
+            0% {
+                opacity: 0;
+                transform: scale(0.96) translateY(20px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        /* ===== 头部 ===== */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #6BB5FF, #4A90E2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 22px;
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2);
+            flex-shrink: 0;
+        }
+
+        .header-left h1 {
+            font-size: 26px;
+            font-weight: 700;
+            color: #1a2332;
+            letter-spacing: -0.02em;
+            margin: 0;
+        }
+
+        .header-badge {
+            font-size: 12px;
+            font-weight: 500;
+            color: #7a8ba3;
+            background: #f6f8fc;
+            padding: 2px 12px;
+            border-radius: 100px;
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            flex-shrink: 0;
+        }
+
+        .subtitle {
+            color: #7a8ba3;
+            font-size: 15px;
+            margin-top: 2px;
+            margin-bottom: 28px;
+            padding-left: 54px;
+            line-height: 1.5;
+        }
+
+        /* ===== 输入区域 ===== */
+        .input-area {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .input-area .input-wrapper {
+            flex: 1;
+            position: relative;
+            min-width: 200px;
+        }
+
+        .input-area .input-wrapper .input-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #a0aec0;
+            font-size: 18px;
+            pointer-events: none;
+        }
+
+        .input-area input {
+            width: 100%;
+            padding: 14px 18px 14px 50px;
+            border: 2px solid #e4eaf2;
+            border-radius: 14px;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.25s ease;
+            background: #f8fafc;
+            color: #1a2332;
+            font-family: inherit;
+        }
+
+        .input-area input::placeholder {
+            color: #a0aec0;
+        }
+
+        .input-area input:hover {
+            border-color: #c8d4e4;
+            background: #ffffff;
+        }
+
+        .input-area input:focus {
+            border-color: #4A90E2;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.12);
+            background: #ffffff;
+        }
+
+        .input-area button {
+            padding: 14px 34px;
+            background: linear-gradient(135deg, #6BB5FF, #4A90E2);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 16px rgba(74, 144, 226, 0.2);
+            font-family: inherit;
+        }
+
+        .input-area button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 28px rgba(74, 144, 226, 0.3);
+        }
+
+        .input-area button:active:not(:disabled) {
+            transform: translateY(0px);
+        }
+
+        .input-area button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .input-area button .btn-icon {
+            font-size: 18px;
+        }
+
+        /* ===== 加载状态 ===== */
+        .loading {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            color: #6b7a8f;
+            margin: 8px 0 4px;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 6px 4px;
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #e4eaf2;
+            border-top-color: #4A90E2;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ===== 错误信息 ===== */
+        .error {
+            color: #e53e3e;
+            background: #fff5f5;
+            border: 1px solid #feb2b2;
+            border-radius: 12px;
+            padding: 12px 18px;
+            margin-top: 12px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        /* ===== 结果区域 ===== */
+        .result-box {
+            margin-top: 20px;
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 24px 26px;
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            min-height: 80px;
+            transition: all 0.2s ease;
+        }
+
+        .result-box .label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #a0aec0;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .result-box .label .label-icon {
+            font-size: 16px;
+        }
+
+        .result-box .answer {
+            font-size: 16px;
+            line-height: 1.8;
+            color: #2d3748;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .result-box .answer.placeholder {
+            color: #a0aec0;
+            font-style: italic;
+        }
+
+        .result-box .meta {
+            margin-top: 14px;
+            font-size: 13px;
+            color: #a0aec0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 20px;
+            border-top: 1px solid rgba(0, 0, 0, 0.04);
+            padding-top: 14px;
+        }
+
+        .result-box .meta .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .result-box .meta .meta-item .meta-icon {
+            font-size: 14px;
+        }
+
+        /* ===== 底部 ===== */
+        footer {
+            margin-top: 22px;
+            font-size: 13px;
+            color: #a0aec0;
+            text-align: center;
+            padding-top: 4px;
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 640px) {
+            .container {
+                padding: 28px 20px;
+                border-radius: 20px;
+            }
+
+            .header-left h1 {
+                font-size: 22px;
+            }
+
+            .brand-icon {
+                width: 36px;
+                height: 36px;
+                font-size: 18px;
+            }
+
+            .subtitle {
+                padding-left: 0;
+                font-size: 14px;
+                margin-top: 6px;
+            }
+
+            .input-area {
+                flex-direction: column;
+            }
+
+            .input-area .input-wrapper {
+                min-width: unset;
+            }
+
+            .input-area input {
+                padding: 14px 16px 14px 46px;
+            }
+
+            .input-area button {
+                width: 100%;
+                justify-content: center;
+                padding: 14px 20px;
+            }
+
+            .result-box {
+                padding: 18px 16px;
+            }
+
+            .header {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .header-badge {
+                margin-left: auto;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .container {
+                padding: 20px 14px;
+                border-radius: 16px;
+            }
+
+            .header-left h1 {
+                font-size: 19px;
+            }
+
+            .brand-icon {
+                width: 32px;
+                height: 32px;
+                font-size: 16px;
+            }
+
+            .result-box .answer {
+                font-size: 15px;
+            }
+        }
+
+        /* ===== 暗色模式 ===== */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #111827;
+            }
+
+            .container {
+                background: rgba(30, 41, 59, 0.92);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border-color: rgba(255, 255, 255, 0.04);
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            }
+
+            .header-left h1 {
+                color: #e8edf4;
+            }
+
+            .header-badge {
+                color: #8a9bb5;
+                background: rgba(255, 255, 255, 0.06);
+                border-color: rgba(255, 255, 255, 0.04);
+            }
+
+            .subtitle {
+                color: #8a9bb5;
+            }
+
+            .input-area input {
+                background: #0f172a;
+                border-color: #2a3a54;
+                color: #e8edf4;
+            }
+
+            .input-area input::placeholder {
+                color: #6b7a8f;
+            }
+
+            .input-area input:hover {
+                border-color: #3a4a64;
+                background: #1a2332;
+            }
+
+            .input-area input:focus {
+                border-color: #4A90E2;
+                box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.15);
+                background: #0f172a;
+            }
+
+            .input-area .input-wrapper .input-icon {
+                color: #6b7a8f;
+            }
+
+            .input-area button {
+                background: linear-gradient(135deg, #6BB5FF, #4A90E2);
+                box-shadow: 0 4px 16px rgba(74, 144, 226, 0.25);
+            }
+
+            .result-box {
+                background: #0f172a;
+                border-color: rgba(255, 255, 255, 0.04);
+            }
+
+            .result-box .answer {
+                color: #e8edf4;
+            }
+
+            .result-box .answer.placeholder {
+                color: #6b7a8f;
+            }
+
+            .result-box .label {
+                color: #6b7a8f;
+            }
+
+            .result-box .meta {
+                color: #6b7a8f;
+                border-top-color: rgba(255, 255, 255, 0.04);
+            }
+
+            .error {
+                background: rgba(229, 62, 62, 0.10);
+                border-color: rgba(229, 62, 62, 0.20);
+                color: #f87171;
+            }
+
+            .loading {
+                color: #8a9bb5;
+            }
+
+            footer {
+                color: #6b7a8f;
+            }
+
+            .brand-icon {
+                background: linear-gradient(135deg, #6BB5FF, #4A90E2);
+                box-shadow: 0 4px 12px rgba(74, 144, 226, 0.25);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 背景装饰 -->
+    <div class="bg-decoration">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <!-- ===== 主容器 ===== -->
+    <div class="container">
+
+        <!-- 头部 -->
+        <div class="header">
+            <div class="header-left">
+                <div class="brand-icon">✦</div>
+                <h1>RAG 问答</h1>
+            </div>
+            <span class="header-badge">v1.0</span>
+        </div>
+
+        <div class="subtitle">
+            基于 DeepSeek + 混合检索 · 输入问题获取智能回答
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="input-area">
+            <div class="input-wrapper">
+                <span class="input-icon">⌕</span>
+                <input type="text" id="questionInput" placeholder="输入您的问题，例如：学生可以接触尚未启用的试卷吗" />
+            </div>
+            <button id="askBtn">
+                <span class="btn-icon">→</span> 提问
+            </button>
+        </div>
+
+        <!-- 加载状态 -->
+        <div class="loading" id="loadingIndicator">
+            <div class="spinner"></div>
+            <span>正在思考，请稍候...</span>
+        </div>
+
+        <!-- 错误信息 -->
+        <div class="error" id="errorMsg"></div>
+
+        <!-- 结果区域 -->
+        <div class="result-box">
+            <div class="label">
+                <span class="label-icon">◆</span> 回答
+            </div>
+            <div class="answer placeholder" id="answerText">输入问题后点击提问，答案将在这里显示。</div>
+            <div class="meta">
+                <span class="meta-item" id="timeDisplay">
+                    <span class="meta-icon">⏱</span> --
+                </span>
+                <span class="meta-item" id="statusDisplay">
+                    <span class="meta-icon">●</span> 就绪
+                </span>
+            </div>
+        </div>
+
+        <footer>API 服务运行在 localhost:8000</footer>
+    </div>
+
+    <script>
+        (function() {
+            const questionInput = document.getElementById('questionInput');
+            const askBtn = document.getElementById('askBtn');
+            const answerText = document.getElementById('answerText');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const errorMsg = document.getElementById('errorMsg');
+            const timeDisplay = document.getElementById('timeDisplay');
+            const statusDisplay = document.getElementById('statusDisplay');
+
+            const API_URL = 'http://localhost:8000/ask';
+
+            async function askQuestion() {
+                const question = questionInput.value.trim();
+                if (!question) {
+                    showError('请输入问题内容。');
+                    return;
+                }
+
+                hideError();
+                answerText.textContent = '...';
+                answerText.className = 'answer';
+                statusDisplay.innerHTML = '<span class="meta-icon">⏳</span> 请求中';
+                timeDisplay.innerHTML = '<span class="meta-icon">⏱</span> --';
+
+                askBtn.disabled = true;
+                loadingIndicator.classList.add('active');
+
+                try {
+                    const startTime = performance.now();
+
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ question: question }),
+                    });
+
+                    const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+
+                    if (!response.ok) {
+                        let errDetail = `HTTP ${response.status}`;
+                        try {
+                            const errJson = await response.json();
+                            errDetail += `: ${errJson.detail || ''}`;
+                        } catch (_) {}
+                        throw new Error(`请求失败 (${errDetail})`);
+                    }
+
+                    const data = await response.json();
+                    const answer = data.answer || '（未返回答案）';
+                    const serverTime = data.elapsed_time ? data.elapsed_time.toFixed(2) : '--';
+
+                    answerText.textContent = answer;
+                    answerText.className = 'answer';
+                    timeDisplay.innerHTML =
+                    `<span class="meta-icon">⏱</span> ${serverTime}s (总 ${elapsed}s)`;
+                    statusDisplay.innerHTML = '<span class="meta-icon">●</span> 完成';
+
+                } catch (err) {
+                    showError(`错误: ${err.message}`);
+                    answerText.textContent = '请求失败，请检查后端服务是否运行。';
+                    answerText.className = 'answer';
+                    statusDisplay.innerHTML = '<span class="meta-icon">✕</span> 失败';
+                    timeDisplay.innerHTML = '<span class="meta-icon">⏱</span> --';
+                } finally {
+                    askBtn.disabled = false;
+                    loadingIndicator.classList.remove('active');
+                }
+            }
+
+            function showError(msg) {
+                errorMsg.textContent = msg;
+                errorMsg.classList.add('show');
+            }
+
+            function hideError() {
+                errorMsg.textContent = '';
+                errorMsg.classList.remove('show');
+            }
+
+            askBtn.addEventListener('click', askQuestion);
+            questionInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    askQuestion();
+                }
+            });
+
+            questionInput.focus();
+        })();
+    </script>
+</body>
+</html>
