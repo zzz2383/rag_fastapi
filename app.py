@@ -1,6 +1,7 @@
 import os
 import time
 import asyncio
+import pickle
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -20,11 +21,10 @@ from langchain_deepseek import ChatDeepSeek
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 
-# 加载环境变量
+# 加载环境变量（含 HF_ENDPOINT 镜像地址）
 load_dotenv()
 
 # -------------------- 全局变量 --------------------
-# 这些将在应用启动时初始化，供后续请求复用
 retriever = None
 llm = None
 rewrite_chain = None
@@ -32,30 +32,27 @@ document_chain = None
 
 
 # -------------------- 初始化函数（仅执行一次） --------------------
-import pickle
-import os
-
 def init_rag():
     global retriever, llm, rewrite_chain, document_chain
 
     print(" 正在初始化 RAG 系统...")
     start_init = time.time()
 
-    # 1. 初始化 LLM（每次都需要）
+    # 1. 初始化 LLM（远程 API，无需缓存）
     llm = ChatDeepSeek(model="deepseek-chat", temperature=0.3, max_tokens=500)
 
-    # 2. 初始化嵌入模型（每次都需要）
+    # 2. 初始化嵌入模型（会从本地缓存加载，若不存在则从镜像下载）
     print(" 加载嵌入模型...")
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        cache_folder="./model_cache"
+        cache_folder="./model_cache"   # 指定缓存目录，确保与手动下载位置一致
     )
 
     # 3. 定义本地缓存路径
     index_path = "faiss_index_deepseek"
     chunks_cache_path = "chunks_cache.pkl"
 
-    # 4. 尝试加载本地缓存
+    # 4. 尝试加载本地缓存（向量库 + 文档块）
     if (os.path.exists(index_path) and
         os.path.exists(os.path.join(index_path, "index.faiss")) and
         os.path.exists(chunks_cache_path)):
@@ -112,7 +109,7 @@ def init_rag():
     )
     retriever = ensemble_retriever
 
-    # 6. 查询改写链与问答链（每次都需要重新创建，因为依赖 llm）
+    # 6. 查询改写链与问答链（依赖 llm，每次都需要重新创建）
     rewrite_prompt = PromptTemplate.from_template(
         """你是一个查询重写助手。请将以下用户问题改写为3个不同角度、更具体、更易于检索的版本。
 只输出改写后的3个问题，每行一个。
@@ -139,36 +136,14 @@ def init_rag():
     print(f" RAG 系统初始化完成，耗时 {elapsed:.2f} 秒。")
 
 
-# -------------------- 核心检索函数（与原逻辑一致） --------------------
-def retrieve_documents(question: str):
-    """多查询检索，返回去重后的文档块列表"""
-    # 1. 改写问题
-    rewritten = rewrite_chain.invoke({"question": question})
-    queries = [q.strip() for q in rewritten.split('\n') if q.strip()]
-    queries.append(question)
-
-    # 2. 检索并去重
-    all_docs = []
-    seen_content = set()
-    for q in queries:
-        docs = retriever.invoke(q)
-        for doc in docs:
-            if doc.page_content not in seen_content:
-                seen_content.add(doc.page_content)
-                all_docs.append(doc)
-    return all_docs
-
-
-def generate_answer(question: str, docs):
-    """基于文档生成答案"""
-    return document_chain.invoke({"input": question, "context": docs})
+# -------------------- 初始化（在模块加载时执行，仅一次） --------------------
+init_rag()
 
 
 # -------------------- FastAPI 生命周期管理 --------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时执行初始化（耗时操作）
-    init_rag()
+    # 启动时无需再初始化（已提前完成）
     yield
     # 关闭时执行清理（如果有需要）
 
@@ -189,51 +164,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 from fastapi.staticfiles import StaticFiles
-
-# 在 app 实例创建之后添加
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # -------------------- 请求与响应模型 --------------------
 class QueryRequest(BaseModel):
     question: str
 
-
 class QueryResponse(BaseModel):
     answer: str
-    elapsed_time: float  # 总耗时（秒）
-
+    elapsed_time: float
 
 # -------------------- API 端点 --------------------
 @app.get("/")
 async def root():
     return {"message": "RAG API 已启动，请访问 /docs 查看接口文档"}
 
-
 @app.post("/ask", response_model=QueryResponse)
 async def ask(request: QueryRequest):
-    """
-    接收用户问题，返回 RAG 生成的答案。
-    """
     if not retriever:
         raise HTTPException(status_code=503, detail="系统尚未初始化完成，请稍后重试。")
 
     question = request.question
     start = time.time()
 
-    # 为避免阻塞事件循环，将同步 RAG 流程放入线程池执行
     loop = asyncio.get_event_loop()
     try:
-        # 检索
         docs = await loop.run_in_executor(None, retrieve_documents, question)
-        # 生成
         answer = await loop.run_in_executor(None, generate_answer, question, docs)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"处理请求时出错: {str(e)}")
 
     elapsed = time.time() - start
     return QueryResponse(answer=answer, elapsed_time=elapsed)
+
+
+# -------------------- 核心检索函数 --------------------
+def retrieve_documents(question: str):
+    rewritten = rewrite_chain.invoke({"question": question})
+    queries = [q.strip() for q in rewritten.split('\n') if q.strip()]
+    queries.append(question)
+
+    all_docs = []
+    seen_content = set()
+    for q in queries:
+        docs = retriever.invoke(q)
+        for doc in docs:
+            if doc.page_content not in seen_content:
+                seen_content.add(doc.page_content)
+                all_docs.append(doc)
+    return all_docs
+
+def generate_answer(question: str, docs):
+    return document_chain.invoke({"input": question, "context": docs})
 
 
 # -------------------- 启动脚本 --------------------
