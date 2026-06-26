@@ -20,6 +20,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_deepseek import ChatDeepSeek
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
+from starlette.responses import RedirectResponse
 
 # 加载环境变量（含 HF_ENDPOINT 镜像地址）
 load_dotenv()
@@ -178,7 +179,7 @@ class QueryResponse(BaseModel):
 # -------------------- API 端点 --------------------
 @app.get("/")
 async def root():
-    return {"message": "RAG API 已启动，请访问 /docs 查看接口文档"}
+    return RedirectResponse(url="/static/index.html")
 
 @app.post("/ask", response_model=QueryResponse)
 async def ask(request: QueryRequest):
