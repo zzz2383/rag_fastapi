@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from langchain_experimental.text_splitter import SemanticChunker
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -46,7 +47,6 @@ def init_rag():
     print(" 加载嵌入模型...")
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        cache_folder="./model_cache"   # 指定缓存目录，确保与手动下载位置一致
     )
 
     # 3. 定义本地缓存路径
@@ -82,10 +82,10 @@ def init_rag():
         print(f"  成功加载 {len(documents)} 页。")
 
         # 切分文档
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len,
+        text_splitter = SemanticChunker(
+            embeddings=embeddings,  # 复用你已有的嵌入模型
+            breakpoint_threshold_type="percentile",  # 基于百分位数的突变检测
+            buffer_size=1  # 平滑程度
         )
         chunks = text_splitter.split_documents(documents)
         print(f"  切分为 {len(chunks)} 个文本块。")
@@ -122,14 +122,14 @@ def init_rag():
     rewrite_chain = rewrite_prompt | llm | StrOutputParser()
 
     prompt_template = PromptTemplate.from_template(
-        """基于以下上下文回答问题。如果无法回答，请说明。
+        """基于以下上下文回答问题。请用最简洁、精准的语言回答，尽量控制在100字以内。如果无法回答，请说明。
 
-上下文：
-{context}
+    上下文：
+    {context}
 
-问题：{input}
+    问题：{input}
 
-回答："""
+    回答："""
     )
     document_chain = create_stuff_documents_chain(llm, prompt_template)
 
