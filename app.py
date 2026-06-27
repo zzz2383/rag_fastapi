@@ -46,7 +46,7 @@ def init_rag():
     # 2. 初始化嵌入模型（会从本地缓存加载，若不存在则从镜像下载）
     print(" 加载嵌入模型...")
     embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        model_name=r"D:\python_work\langchain\models\all-MiniLM-L6-v2",
     )
 
     # 3. 定义本地缓存路径
@@ -102,8 +102,8 @@ def init_rag():
 
     # 5. 创建混合检索器（无论加载还是新建，都使用 chunks 和 vectorstore）
     print(" 创建混合检索器...")
-    bm25_retriever = BM25Retriever.from_documents(chunks, k=50)
-    faiss_retriever = vectorstore.as_retriever(search_kwargs={"k": 50})
+    bm25_retriever = BM25Retriever.from_documents(chunks, k=35)
+    faiss_retriever = vectorstore.as_retriever(search_kwargs={"k": 35})
     ensemble_retriever = EnsembleRetriever(
         retrievers=[bm25_retriever, faiss_retriever],
         weights=[0.4, 0.6]
@@ -113,7 +113,7 @@ def init_rag():
     # 6. 查询改写链与问答链（依赖 llm，每次都需要重新创建）
     rewrite_prompt = PromptTemplate.from_template(
         """你是一个查询重写助手。请将以下用户问题改写为3个不同角度、更具体、更易于检索的版本。
-只输出改写后的3个问题，每行一个。
+只输出改写后的2个问题，每行一个。
 
 原始问题: {question}
 
