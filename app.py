@@ -46,7 +46,7 @@ def init_rag():
     # 2. 初始化嵌入模型（会从本地缓存加载，若不存在则从镜像下载）
     print(" 加载嵌入模型...")
     embeddings = HuggingFaceEmbeddings(
-        model_name=r"D:\python_work\langchain\models\all-MiniLM-L6-v2",
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
     )
 
     # 3. 定义本地缓存路径
